@@ -24,13 +24,15 @@ jobs:
       - name: Set lowercase image name
         run: |
           echo "IMAGE_NAME_LOWER=${IMAGE_NAME,,}" >> $GITHUB_ENV
+          PKG=${IMAGE_NAME##*/}
+          echo "PACKAGE_NAME=${PKG,,}" >> $GITHUB_ENV
         shell: bash
 
       - name: Delete old GHCR package versions
         if: github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash .github/scripts/cleanup-ghcr.sh taotugallary
+        run: bash .github/scripts/cleanup-ghcr.sh "$PACKAGE_NAME"
         shell: bash
 
       - name: Read version from file

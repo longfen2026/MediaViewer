@@ -1,6 +1,6 @@
 services:
   gallery:
-    image: ghcr.io/lijilong225/taotugallary:latest
+    image: ghcr.io/lijilong225/mediaviewer:latest
     container_name: gallery-manager
     ports:
       - "${PORT:-8080}:8080"

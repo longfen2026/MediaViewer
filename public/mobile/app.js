@@ -898,6 +898,12 @@ const state = {
 
   (async () => {
     try {
+      const v = await fetch('/api/version').then(r => r.json());
+      if (v.version) {
+        document.querySelector('.m-version-badge').textContent = v.version;
+      }
+    } catch {}
+    try {
       const data = await api('/api/me');
       showMain(data.user);
     } catch {
