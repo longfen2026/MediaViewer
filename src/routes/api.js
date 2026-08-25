@@ -184,7 +184,7 @@ router.get('/image', requireAuth, async (req, res, next) => {
     if (isArchiveFile(filePath)) {
       if (!entry) return res.status(400).json({ error: '缺少 entry 参数' });
       const { readEntryBuffer } = require('../archive');
-      const buf = await readEntryBuffer(filePath, filePath, entry);
+      const buf = await readEntryBuffer(filePath, entry);
       res.setHeader('Content-Type', mimeType(entry));
       res.setHeader('Cache-Control', 'private, max-age=86400');
       return res.send(buf);

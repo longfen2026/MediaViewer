@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execFileSync } = require('child_process');
 const sharp = require('sharp');
-const AdmZip = require('adm-zip');
 const auth = require('./src/auth');
 const { config } = require('./src/config');
 const gallery = require('./src/gallery');
@@ -69,10 +69,10 @@ async function runTests() {
 
       // 压缩包条目元数据
       console.log('✓ 测试6: getMediaInfo 压缩包条目');
-      const zip = new AdmZip();
-      zip.addFile('inner.png', await fs.promises.readFile(imgPath));
+      const innerPng = path.join(tmpDir, 'inner.png');
+      await fs.promises.copyFile(imgPath, innerPng);
       const zipPath = path.join(tmpDir, 'album.zip');
-      zip.writeZip(zipPath);
+      execFileSync('bsdtar', ['-a', '-cf', zipPath, '-C', tmpDir, 'inner.png']);
       const aInfo = await gallery.getMediaInfo('album.zip', 'inner.png');
       console.log('  类型:', aInfo.type);
       console.log('  位置:', aInfo.location);

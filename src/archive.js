@@ -1,6 +1,5 @@
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const fs = require('fs');
-const AdmZip = require('adm-zip');
 const { normalizeArchiveEntry } = require('./utils');
 
 const entriesCache = new Map();
@@ -26,15 +25,11 @@ function setCachedEntries(filePath, data) {
 
 function execFileAsync(cmd, args, options = {}) {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { maxBuffer: 64 * 1024 * 1024, ...options }, (err, stdout, stderr) => {
+    execFile(cmd, args, { maxBuffer: 1024 * 1024 * 1024, ...options }, (err, stdout, stderr) => {
       if (err) reject(new Error(`${cmd} failed: ${stderr || err.message}`));
       else resolve({ stdout, stderr });
     });
   });
-}
-
-function isRar(name) {
-  return name.toLowerCase().endsWith('.rar');
 }
 
 const MONTHS = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
@@ -62,53 +57,57 @@ function parseBsdtarTime(fields) {
   return null;
 }
 
-async function listEntries(filePath, ext) {
+// zip 与 rar 统一使用 bsdtar（libarchive）流式读取，避免整包读入内存
+async function listEntries(filePath) {
   const cached = getCachedEntries(filePath);
   if (cached) return cached;
 
-  let result;
-  if (isRar(ext)) {
-    const { stdout } = await execFileAsync('bsdtar', ['-tvf', filePath]);
-    result = stdout.split('\n')
-      .map(l => l.trim())
-      .filter(Boolean)
-      .map(l => {
-        const fields = l.split(' ');
-        let time = null;
-        let name = '';
-        for (let i = 0; i < fields.length; i++) {
-          if (MONTHS[fields[i]] !== undefined) {
-            time = parseBsdtarTime(fields);
-            name = fields.slice(i + 3).join(' ').trim();
-            break;
-          }
+  const { stdout } = await execFileAsync('bsdtar', ['-tvf', filePath]);
+  const result = stdout.split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)
+    .map(l => {
+      const fields = l.split(' ');
+      let time = null;
+      let size = null;
+      let name = '';
+      for (let i = 0; i < fields.length; i++) {
+        if (MONTHS[fields[i]] !== undefined) {
+          time = parseBsdtarTime(fields);
+          size = parseInt(fields[i - 1], 10);
+          if (isNaN(size)) size = null;
+          name = fields.slice(i + 3).join(' ').trim();
+          break;
         }
-        return { name: normalizeArchiveEntry(name), isDirectory: l.endsWith('/'), mtime: time };
-      });
-  } else {
-    const zip = new AdmZip(filePath);
-    result = zip.getEntries().map(e => ({
-      name: normalizeArchiveEntry(e.entryName),
-      isDirectory: e.isDirectory,
-      size: e.header.size,
-      mtime: e.header.time ? new Date(e.header.time).getTime() : null,
-    }));
-  }
+      }
+      return { name: normalizeArchiveEntry(name), isDirectory: l.endsWith('/'), size, mtime: time };
+    });
 
   setCachedEntries(filePath, result);
   return result;
 }
 
-async function readEntryBuffer(filePath, ext, entryName) {
+async function readEntryBuffer(filePath, entryName) {
   const entry = normalizeArchiveEntry(entryName);
-  if (isRar(ext)) {
-    const { stdout } = await execFileAsync('bsdtar', ['-xOf', filePath, entry], { encoding: 'buffer' });
-    return Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
-  }
-  const zip = new AdmZip(filePath);
-  const found = zip.getEntries().find(e => normalizeArchiveEntry(e.entryName) === entry);
-  if (!found) throw new Error(`archive entry not found: ${entry}`);
-  return found.getData();
+  const { stdout } = await execFileAsync('bsdtar', ['-xOf', filePath, entry], { encoding: 'buffer' });
+  return Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
 }
 
-module.exports = { listEntries, readEntryBuffer };
+// 流式解压单个条目到目标文件，避免大文件整条读入内存
+function extractEntryToFile(filePath, entryName, targetPath) {
+  const entry = normalizeArchiveEntry(entryName);
+  return new Promise((resolve, reject) => {
+    const child = spawn('bsdtar', ['-xOf', filePath, entry], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const out = fs.createWriteStream(targetPath);
+    child.stdout.pipe(out);
+    child.on('error', (err) => { out.destroy(); reject(err); });
+    out.on('error', (err) => { child.kill(); reject(err); });
+    child.on('close', (code) => {
+      out.end();
+      if (code !== 0) reject(new Error(`bsdtar extract failed with code ${code}`));
+      else resolve(targetPath);
+    });
+  });
+}
+
+module.exports = { listEntries, readEntryBuffer, extractEntryToFile };

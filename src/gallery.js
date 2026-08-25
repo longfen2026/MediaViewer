@@ -250,7 +250,7 @@ async function getMediaInfo(userPath, entryName) {
 
   if (entryName) {
     const entry = normalizeArchiveEntry(entryName);
-    const entries = await listEntries(full, full);
+    const entries = await listEntries(full);
     const target = entries.find(e => normalizeArchiveEntry(e.name) === entry && !e.isDirectory);
     if (!target) throw new Error('file not found');
     const info = {
@@ -266,7 +266,7 @@ async function getMediaInfo(userPath, entryName) {
       mtimeText: formatTime(target.mtime),
     };
     if (info.type === 'image') {
-      const buf = await readEntryBuffer(full, full, entry);
+      const buf = await readEntryBuffer(full, entry);
       Object.assign(info, await imageDimensionsFromBuffer(buf));
     } else if (info.type === 'video') {
       const videoPath = await extractVideoToCache(full, entry);
@@ -299,7 +299,7 @@ async function getMediaInfo(userPath, entryName) {
 async function listArchiveMedia(archiveRel, sortBy = 'name', sortOrder = 'asc') {
   const full = safeResolve(archiveRel);
   if (!(await exists(full))) throw new Error('archive not found');
-  const entries = await listEntries(full, full);
+  const entries = await listEntries(full);
   const media = entries.filter(e => !e.isDirectory && (isImageFile(e.name) || isVideoFile(e.name)));
   const allMedia = [];
   for (const e of media) {

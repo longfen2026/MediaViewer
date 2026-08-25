@@ -147,7 +147,7 @@ async function getThumbForArchiveEntry(archivePath, entryName, _width) {
   if (!(await thumbExists(key))) {
     await coalesceThumb(key, () => generateThumbManaged(async () =>
       isVideo ? generateThumbFromVideo(video, key, { width: genWidth })
-              : generateThumb(await readEntryBuffer(archivePath, archivePath, entryName), key, { width: genWidth })
+              : generateThumb(await readEntryBuffer(archivePath, entryName), key, { width: genWidth })
     ));
   }
   return { path: key, mime: 'image/webp' };
@@ -168,18 +168,17 @@ async function coalesceThumb(key, run) {
   return p;
 }
 
-// 请求合并：同一视频文件只解压一次
+// 请求合并：同一视频文件只解压一次（流式写入缓存，避免大文件整条读入内存）
 const pendingExtracts = new Map();
 async function coalesceExtract(archivePath, entryName) {
-  const { readEntryBuffer } = require('./archive');
+  const { extractEntryToFile } = require('./archive');
   const target = await videoCacheFile(archivePath, entryName);
   const done = async () => {
     try {
       await fs.promises.stat(target);
       return target;
     } catch { /* not extracted yet */ }
-    const buf = await readEntryBuffer(archivePath, archivePath, entryName);
-    await fs.promises.writeFile(target, buf);
+    await extractEntryToFile(archivePath, entryName, target);
     return target;
   };
   const existing = pendingExtracts.get(target);
