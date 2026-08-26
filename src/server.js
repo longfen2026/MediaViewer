@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const helmet = require('helmet');
 const path = require('path');
 const { config, ROOT_DIR } = require('./config');
 const api = require('./routes/api');
@@ -27,6 +28,32 @@ const app = express();
 async function init() {
   if (config.trustProxy > 0) app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');
+
+  app.use(helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        'default-src': ["'self'"],
+        'script-src': ["'self'"],
+        // 前端通过 element.style 控制布局（网格列宽、缩放、树缩进），无法去掉 unsafe-inline
+        'style-src': ["'self'", "'unsafe-inline'"],
+        'img-src': ["'self'", 'blob:', 'data:'],
+        'media-src': ["'self'", 'blob:'],
+        'connect-src': ["'self'"],
+        'font-src': ["'self'"],
+        'object-src': ["'none'"],
+        'frame-ancestors': ["'none'"],
+        'base-uri': ["'self'"],
+        'form-action': ["'self'"],
+      },
+    },
+    // 图库图片与页面同源，无需跨源隔离；开启反而会干扰 blob: 预览
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'same-origin' },
+    referrerPolicy: { policy: 'no-referrer' },
+    // 服务可能通过纯 HTTP 在内网访问，强制 HSTS 会造成无法访问
+    hsts: false,
+  }));
 
   // 请求日志中间件 - 应在最前面
   app.use(requestLogger);

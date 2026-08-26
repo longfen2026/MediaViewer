@@ -1,12 +1,13 @@
 {
   "name": "gallery-manager",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "视图浏览器 - 基于 Web 的图片浏览与管理工具",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test.js"
+    "test": "node test.js",
+    "sync-version": "node scripts/sync-version.js"
   },
   "engines": {
     "node": ">=22"
@@ -17,6 +18,7 @@
     "express-rate-limit": "^7.1.5",
     "express-session": "^1.18.0",
     "express-validator": "^7.1.0",
+    "helmet": "8.1.0",
     "sharp": "^0.33.4",
     "winston": "^3.11.0"
   }

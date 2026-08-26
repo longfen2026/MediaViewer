@@ -2,7 +2,10 @@
 (function () {
   'use strict';
 
-const state = {
+  const { thumbUrl, rawUrl, videoUrl, favKey, formatTimeHeader } = window.MV;
+  const groupByTime = (items, level) => window.MV.groupByTime(items, level, state.sortOrder);
+
+  const state = {
     user: null,
     tree: null,
     favorites: {},
@@ -21,79 +24,7 @@ const state = {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-  /* ---------------- API ---------------- */
-  async function api(path, opts) {
-    const r = await fetch(path, opts);
-    if (!r.ok) {
-      let msg = '请求失败';
-      try { msg = (await r.json()).error || msg; } catch {}
-      throw new Error(msg);
-    }
-    return r.json();
-  }
-
-  /* ---------------- URL helpers ---------------- */
-  function thumbUrl(item) {
-    const p = encodeURIComponent(item.path);
-    if (item.type === 'archive') {
-      return `/api/thumb?path=${p}&entry=${encodeURIComponent(item.entry)}`;
-    }
-    return `/api/thumb?path=${p}`;
-  }
-
-  function rawUrl(item) {
-    const p = encodeURIComponent(item.path);
-    if (item.type === 'archive') {
-      return `/api/image?path=${p}&entry=${encodeURIComponent(item.entry)}`;
-    }
-    return `/api/image?path=${p}`;
-  }
-
-  function videoUrl(item) {
-    const p = encodeURIComponent(item.path);
-    if (item.type === 'archive') {
-      return `/api/video?path=${p}&entry=${encodeURIComponent(item.entry)}`;
-    }
-    return `/api/video?path=${p}`;
-  }
-
-  function groupByTime(items, level) {
-    const groups = {};
-    items.forEach(item => {
-      const d = new Date(item.mtime);
-      let key;
-      if (level === 'year') {
-        key = String(d.getFullYear());
-      } else if (level === 'month') {
-        key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      } else {
-        key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      }
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(item);
-    });
-    const keys = Object.keys(groups).sort();
-    if (state.sortOrder === 'desc') keys.reverse();
-    return keys.map(k => ({ key: k, items: groups[k] }));
-  }
-
-  function formatTimeHeader(mtime, level) {
-    const d = new Date(mtime);
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-    if (level === 'year') return `${d.getFullYear()}年`;
-    if (level === 'month') return `${d.getFullYear()}年${d.getMonth() + 1}月`;
-    const today = new Date();
-    const dayStr = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
-    if (d.toDateString() === today.toDateString()) return `今天 · ${dayStr} 星期${weekdays[d.getDay()]}`;
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) return `昨天 · ${dayStr} 星期${weekdays[d.getDay()]}`;
-    return `${dayStr} 星期${weekdays[d.getDay()]}`;
-  }
-
-  function favKey(item) {
-    return item.entry ? item.path + '|' + item.entry : item.path;
-  }
+  const api = window.MV.createApi();
 
   function isFavored(key) {
     return !!state.favorites[key];
@@ -505,23 +436,10 @@ const state = {
   }
 
   /* ---------------- Lazy load ---------------- */
-  let lazyObserver = null;
-  function lazyLoad() {
-    if (!lazyObserver) {
-      lazyObserver = new IntersectionObserver((entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          const img = entry.target;
-          if (!img.src) {
-            img.src = img.dataset.thumb;
-            img.dataset.thumb = '';
-          }
-          lazyObserver.unobserve(img);
-        });
-      }, { rootMargin: '300px' });
-    }
-    $$('#m-media img[data-thumb]').forEach((img) => lazyObserver.observe(img));
-  }
+  const lazyLoad = window.MV.createLazyLoader({
+    selector: '#m-media img[data-thumb]',
+    rootMargin: '300px',
+  });
 
   /* ---------------- Favorites ---------------- */
   function showToast(msg) {

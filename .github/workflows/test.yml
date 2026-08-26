@@ -23,6 +23,12 @@ jobs:
 
       - run: npm ci
 
+      - name: Check version consistency
+        run: |
+          npm run sync-version
+          git diff --exit-code package.json \
+            || { echo '::error::package.json 版本与 version 文件不一致，请运行 npm run sync-version'; exit 1; }
+
       - run: npm test
 
       - name: Build image
