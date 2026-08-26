@@ -27,6 +27,8 @@ function loadOrCreateSecret() {
 const config = {
   port: parseInt(process.env.PORT || '8080', 10),
   galleryRoot: path.resolve(process.env.GALLERY_ROOT || '/gallery'),
+  // 仅在反向代理后运行时开启：否则客户端可伪造 X-Forwarded-For 绕过按 IP 的限流
+  trustProxy: parseInt(process.env.TRUST_PROXY || '0', 10),
   adminUser: process.env.ADMIN_USER || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || (() => {
     const pw = require('crypto').randomBytes(4).toString('hex');

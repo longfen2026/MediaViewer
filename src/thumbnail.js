@@ -7,7 +7,10 @@ const { config } = require('./config');
 const { isVideoFile, mimeType } = require('./utils');
 
 const VIDEO_CACHE_DIR = path.join(config.thumbDir, '..', 'videos');
-const VIDEO_THUMB_DIR = config.videoThumbDir;
+
+function videoThumbDir() {
+  return config.videoThumbDir;
+}
 
 // 并发信号量，限制重任务（ffmpeg/sharp）同时运行数
 class Semaphore {
@@ -33,7 +36,7 @@ function cacheKey(...parts) {
 
 function videoCacheKey(...parts) {
   const hash = crypto.createHash('sha1').update(parts.join('|')).digest('hex');
-  return path.join(VIDEO_THUMB_DIR, hash.slice(0, 2), hash + '.webp');
+  return path.join(videoThumbDir(), hash.slice(0, 2), hash + '.webp');
 }
 
 async function ensureDir(dir) {
@@ -116,7 +119,7 @@ async function thumbExists(targetPath) {
   }
 }
 
-async function getThumbForFile(filePath, _width) {
+async function getThumbForFile(filePath) {
   const stat = await fs.promises.stat(filePath);
   const genWidth = config.thumbSize * 2;
   const isVideo = isVideoFile(filePath);
@@ -132,7 +135,7 @@ async function getThumbForFile(filePath, _width) {
   return { path: key, mime: 'image/webp' };
 }
 
-async function getThumbForArchiveEntry(archivePath, entryName, _width) {
+async function getThumbForArchiveEntry(archivePath, entryName) {
   const { readEntryBuffer } = require('./archive');
   const stat = await fs.promises.stat(archivePath);
   const genWidth = config.thumbSize * 2;
@@ -233,7 +236,9 @@ async function cleanupThumbCache() {
       } else if (isArchiveFile(name)) {
         let entries;
         try { entries = await listEntries(full); } catch { continue; }
-        for (const entry of entries) {
+        for (const e of entries) {
+          if (e.isDirectory) continue;
+          const entry = e.name;
           if (isImageFile(entry) || isVideoFile(entry)) {
             const video = isVideoFile(entry);
             const key = video
@@ -254,7 +259,7 @@ async function cleanupThumbCache() {
   let deleted = 0;
   let freed = 0;
 
-  for (const thumbRoot of [config.thumbDir, VIDEO_THUMB_DIR]) {
+  for (const thumbRoot of [config.thumbDir, videoThumbDir()]) {
     if (!fs.existsSync(thumbRoot)) continue;
     const dirs = await fs.promises.readdir(thumbRoot);
     for (const d of dirs) {

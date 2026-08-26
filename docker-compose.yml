@@ -7,8 +7,11 @@ services:
     environment:
       - GALLERY_ROOT=/gallery
       - ADMIN_USER=${ADMIN_USER:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-      - SESSION_SECRET=${SESSION_SECRET:-please-change-me}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD 必须设置}
+      # SESSION_SECRET 未设置时由服务生成并持久化到 /app/data/session_secret
+      - SESSION_SECRET=${SESSION_SECRET:-}
+      # 仅在反向代理后运行时设为 1，直接暴露端口时保持 0，否则限流可被 X-Forwarded-For 绕过
+      - TRUST_PROXY=${TRUST_PROXY:-0}
     volumes:
       - ${GALLERY_DIR:-./gallery}:/gallery
       - gallery-data:/app/data

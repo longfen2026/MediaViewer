@@ -15,8 +15,6 @@ const { loginLimiter } = require('../middleware');
 
 const router = express.Router();
 
-const THUMB_SIZES = { s: 160, m: 240, l: 320 };
-
 // 应用登录速率限制到整个路由
 router.use(loginLimiter);
 
@@ -153,18 +151,17 @@ router.get('/thumb', requireAuth, async (req, res, next) => {
   try {
     const p = req.query.path || '';
     const entry = req.query.entry;
-    const filePath = gallery.safeResolve(p);
+    const filePath = await gallery.safeResolve(p);
     const stat = await fs.promises.stat(filePath).catch(() => null);
     if (!stat) throw new Error('file not found');
     if (stat.isDirectory()) return res.status(400).json({ error: '不能为目录生成缩略图' });
 
-    const width = THUMB_SIZES[req.query.size] || undefined;
     let result;
     if (isArchiveFile(filePath)) {
       if (!entry) return res.status(400).json({ error: '缺少 entry 参数' });
-      result = await thumb.getThumbForArchiveEntry(filePath, entry, width);
+      result = await thumb.getThumbForArchiveEntry(filePath, entry);
     } else if (isImageFile(filePath) || isVideoFile(filePath)) {
-      result = await thumb.getThumbForFile(filePath, width);
+      result = await thumb.getThumbForFile(filePath);
     } else {
       return res.status(400).json({ error: '不支持的文件类型' });
     }
@@ -176,7 +173,7 @@ router.get('/image', requireAuth, async (req, res, next) => {
   try {
     const p = req.query.path || '';
     const entry = req.query.entry;
-    const filePath = gallery.safeResolve(p);
+    const filePath = await gallery.safeResolve(p);
     const stat = await fs.promises.stat(filePath).catch(() => null);
     if (!stat) throw new Error('file not found');
     if (stat.isDirectory()) return res.status(400).json({ error: '不能读取目录' });
@@ -242,7 +239,7 @@ router.get('/video', requireAuth, async (req, res, next) => {
   try {
     const p = req.query.path || '';
     const entry = req.query.entry;
-    const filePath = gallery.safeResolve(p);
+    const filePath = await gallery.safeResolve(p);
     const stat = await fs.promises.stat(filePath).catch(() => null);
     if (!stat) throw new Error('file not found');
     if (stat.isDirectory()) return res.status(400).json({ error: '不能播放目录' });

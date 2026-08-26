@@ -27,18 +27,19 @@ function toRel(p) {
   return rel.split(path.sep).join('/');
 }
 
-function safeResolve(userPath) {
+async function safeResolve(userPath) {
   const target = path.resolve(config.galleryRoot, userPath || '.');
   const rel = path.relative(config.galleryRoot, target);
   if (rel.startsWith('..')) throw new Error('invalid path');
-  if (!fs.existsSync(target)) throw new Error('file not found');
+  let real;
   try {
-    const real = fs.realpathSync(target);
-    const realRel = path.relative(fs.realpathSync(config.galleryRoot), real);
-    if (realRel.startsWith('..')) throw new Error('invalid path');
+    real = await fs.promises.realpath(target);
   } catch (e) {
-    if (e.message === 'invalid path') throw e;
+    if (e.code === 'ENOENT') throw new Error('file not found');
+    return target;
   }
+  const realRoot = await fs.promises.realpath(config.galleryRoot).catch(() => config.galleryRoot);
+  if (path.relative(realRoot, real).startsWith('..')) throw new Error('invalid path');
   return target;
 }
 
@@ -111,7 +112,7 @@ async function buildTree() {
 }
 
 async function listGalleryDir(userPath, pageNum = 1, pageSize = 50, sortBy = 'name', sortOrder = 'asc') {
-  const dir = safeResolve(userPath);
+  const dir = await safeResolve(userPath);
   if (!(await isDirectory(dir))) throw new Error('not a directory');
 
   const entries = await fs.promises.readdir(dir);
@@ -245,7 +246,7 @@ function mediaType(name) {
 }
 
 async function getMediaInfo(userPath, entryName) {
-  const full = safeResolve(userPath);
+  const full = await safeResolve(userPath);
   if (!(await exists(full))) throw new Error('file not found');
 
   if (entryName) {
@@ -297,7 +298,7 @@ async function getMediaInfo(userPath, entryName) {
 }
 
 async function listArchiveMedia(archiveRel, sortBy = 'name', sortOrder = 'asc') {
-  const full = safeResolve(archiveRel);
+  const full = await safeResolve(archiveRel);
   if (!(await exists(full))) throw new Error('archive not found');
   const entries = await listEntries(full);
   const media = entries.filter(e => !e.isDirectory && (isImageFile(e.name) || isVideoFile(e.name)));

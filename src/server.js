@@ -5,6 +5,7 @@ const { config, ROOT_DIR } = require('./config');
 const api = require('./routes/api');
 const logger = require('./logger');
 const { errorHandler, requestLogger, apiLimiter } = require('./middleware');
+const SqliteStore = require('./sessionStore');
 const { cleanupThumbCache } = require('./thumbnail');
 const { execSync } = require('child_process');
 
@@ -24,7 +25,7 @@ function checkBinary(cmd) {
 const app = express();
 
 async function init() {
-  app.set('trust proxy', 1);
+  if (config.trustProxy > 0) app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');
 
   // 请求日志中间件 - 应在最前面
@@ -35,6 +36,7 @@ async function init() {
   app.use(session({
     name: 'gal.sid',
     secret: config.sessionSecret,
+    store: new SqliteStore(),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -82,8 +84,11 @@ async function init() {
       nodeEnv: process.env.NODE_ENV || 'development',
     });
     if (!checkBinary('ffmpeg')) logger.warn('警告: 未找到ffmpeg - 视频缩略图生成可能失败');
+    if (!checkBinary('ffprobe')) logger.warn('警告: 未找到ffprobe - 视频尺寸信息可能不可用');
     if (!checkBinary('bsdtar')) logger.warn('警告: 未找到bsdtar - RAR压缩包支持可能不可用');
-    cleanupThumbCache().catch(() => {});
+    cleanupThumbCache().catch((err) => {
+      logger.error('缩略图缓存清理失败', { error: err.message, stack: err.stack });
+    });
   });
 }
 

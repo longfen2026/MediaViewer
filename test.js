@@ -6,6 +6,7 @@ const sharp = require('sharp');
 const auth = require('./src/auth');
 const { config } = require('./src/config');
 const gallery = require('./src/gallery');
+const thumbnail = require('./src/thumbnail');
 const logger = require('./src/logger');
 
 async function runTests() {
@@ -91,6 +92,36 @@ async function runTests() {
         const notFoundOk = e.message === 'file not found';
         console.log('  返回错误:', notFoundOk ? '✓ file not found' : '✗ ' + e.message, '\n');
         if (!notFoundOk) throw e;
+      }
+
+      // 路径遍历防护
+      console.log('✓ 测试8: 路径遍历防护');
+      try {
+        await gallery.safeResolve('../../etc/passwd');
+        throw new Error('不应成功');
+      } catch (e) {
+        const blocked = e.message === 'invalid path';
+        console.log('  越界路径:', blocked ? '✓ 已拒绝' : '✗ ' + e.message, '\n');
+        if (!blocked) throw e;
+      }
+
+      // 缩略图缓存清理必须能处理含压缩包的图库（回归：曾把 entry 对象当字符串导致整体中止）
+      console.log('✓ 测试9: 缩略图缓存清理（含压缩包）');
+      const origThumbDir = config.thumbDir;
+      const thumbTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gal-thumb-test-'));
+      config.thumbDir = thumbTmp;
+      try {
+        const stale = path.join(thumbTmp, 'ab');
+        fs.mkdirSync(stale, { recursive: true });
+        const staleFile = path.join(stale, 'deadbeef.webp');
+        fs.writeFileSync(staleFile, 'stale');
+        await thumbnail.cleanupThumbCache();
+        const removed = !fs.existsSync(staleFile);
+        console.log('  过期缩略图删除:', removed ? '✓ 通过' : '✗ 未删除', '\n');
+        if (!removed) throw new Error('cleanupThumbCache 未清理过期缩略图');
+      } finally {
+        config.thumbDir = origThumbDir;
+        fs.rmSync(thumbTmp, { recursive: true, force: true });
       }
     } finally {
       config.galleryRoot = origRoot;

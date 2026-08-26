@@ -4,8 +4,8 @@ RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install --omit=dev && npm cache clean --force
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
 FROM --platform=$TARGETPLATFORM node:22-alpine
 
@@ -16,9 +16,13 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
+RUN mkdir -p /app/data /gallery && chown -R node:node /app /gallery
+
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV GALLERY_ROOT=/gallery
+
+USER node
 
 EXPOSE 8080
 

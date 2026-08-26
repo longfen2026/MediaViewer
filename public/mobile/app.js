@@ -35,11 +35,10 @@ const state = {
   /* ---------------- URL helpers ---------------- */
   function thumbUrl(item) {
     const p = encodeURIComponent(item.path);
-    const sz = `&size=${state.thumbSize}`;
     if (item.type === 'archive') {
-      return `/api/thumb?path=${p}&entry=${encodeURIComponent(item.entry)}${sz}`;
+      return `/api/thumb?path=${p}&entry=${encodeURIComponent(item.entry)}`;
     }
-    return `/api/thumb?path=${p}${sz}`;
+    return `/api/thumb?path=${p}`;
   }
 
   function rawUrl(item) {

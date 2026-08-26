@@ -8,15 +8,17 @@
   - HttpOnly Cookie - 防止 XSS 攻击
   - SameSite 策略 - 防止 CSRF 攻击
   - 7 天有效期，自动过期
+  - 会话持久化在 `data/sessions.db`，过期记录定时清理
 
 ### 访问控制
-- **路径遍历防护**：严格验证所有路径参数，防止目录遍历攻击
-- **API 认证**：除 `/ping` 外所有 API 端点都需要认证
+- **路径遍历防护**：严格验证所有路径参数，并解析真实路径防止软链接逃逸
+- **API 认证**：除 `/ping`、`/version`、`/login` 外所有 API 端点都需要认证
 
 ### 速率限制
-- **登录限制**：同一 IP 15 分钟内最多 5 次登录尝试
-- **API 限制**：同一用户每分钟最多 100 次 API 请求
+- **登录限制**：同一 IP 15 分钟内最多 30 次登录尝试（`LOGIN_RATE_LIMIT_MAX`）
+- **API 限制**：同一用户每分钟最多 600 次 API 请求（`API_RATE_LIMIT_MAX`）
 - 防止暴力破解和资源滥用
+- **代理信任**：默认不信任 `X-Forwarded-For`。仅在反向代理后部署时设置 `TRUST_PROXY=1`，否则限流可被伪造请求头绕过
 
 ### 日志与监控
 - **结构化日志**：所有重要操作都被记录（登录、登出、错误等）
@@ -42,6 +44,7 @@ SESSION_SECRET=<强随机密钥>  # 使用 `openssl rand -hex 32` 生成
 GALLERY_ROOT=/safe/path/to/images
 ADMIN_USER=<自定义用户名>
 ADMIN_PASSWORD=<强密码>  # 修改后重启服务生效
+TRUST_PROXY=1            # 仅当服务运行在反向代理之后
 ```
 
 2. **HTTPS/TLS**

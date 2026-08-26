@@ -15,8 +15,11 @@
    - HTTP 缓存策略，减少重复请求
    - 缩略图智能缓存和自动失效
 8. **安全加固**：
-   - 登录速率限制（15分钟内最多5次尝试）
+   - 登录速率限制（15分钟内最多30次尝试，`LOGIN_RATE_LIMIT_MAX` 可调）
+   - API 速率限制（每分钟最多600次请求，`API_RATE_LIMIT_MAX` 可调）
    - 路径遍历防护
+   - 会话持久化到 SQLite，重启不掉线
+   - 容器以非 root 用户运行
    - 结构化日志记录（错误和审计日志）
 
 ## 快速开始（Docker Compose）
@@ -38,9 +41,14 @@ ADMIN_USER=admin ADMIN_PASSWORD=your-strong-password GALLERY_DIR=/data/pictures 
 | `PORT` | `8080` | 服务端口 |
 | `GALLERY_ROOT` | `/gallery` | 图片映射根目录 |
 | `ADMIN_USER` | `admin` | 管理员用户名 |
-| `ADMIN_PASSWORD` | `admin` | 管理员密码 |
-| `SESSION_SECRET` | 随机生成 | 会话签名密钥 |
+| `ADMIN_PASSWORD` | 随机生成 | 管理员密码，未设置时启动日志会打印随机密码 |
+| `SESSION_SECRET` | 随机生成 | 会话签名密钥，持久化到 `data/session_secret` |
 | `THUMB_DIR` | `/app/data/thumbs` | 缩略图缓存目录 |
+| `TRUST_PROXY` | `0` | 信任的反向代理层数，仅在代理后运行时设为 `1` |
+| `LOGIN_RATE_LIMIT_MAX` | `30` | 单 IP 15 分钟内登录尝试上限 |
+| `API_RATE_LIMIT_MAX` | `600` | 单用户每分钟 API 请求上限 |
+
+> `TRUST_PROXY` 为 `0` 时按真实连接 IP 限流。若容器直接暴露端口却设为 `1`，客户端可伪造 `X-Forwarded-For` 绕过登录限流。
 
 ## 手动构建运行
 

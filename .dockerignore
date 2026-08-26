@@ -4,6 +4,7 @@ gallery/
 .git/
 .github/
 scripts/
+test.js
 *.log
 .DS_Store
 README.md

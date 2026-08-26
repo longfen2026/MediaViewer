@@ -44,6 +44,18 @@ jobs:
           echo "Image version: $VERSION"
         shell: bash
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install bsdtar
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+
+      - name: Run unit tests
+        run: npm ci && npm test
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
