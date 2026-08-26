@@ -38,6 +38,10 @@ const config = {
   sessionSecret: loadOrCreateSecret(),
   thumbDir: process.env.THUMB_DIR || path.join(ROOT_DIR, 'data', 'thumbs'),
   videoThumbDir: process.env.VIDEO_THUMB_DIR || path.join(ROOT_DIR, 'data', 'videothumbs'),
+  // 压缩包内视频解压后的落地目录
+  videoCacheDir: process.env.VIDEO_CACHE_DIR || path.join(ROOT_DIR, 'data', 'videos'),
+  // 缩略图 + 视频缓存的总容量上限（MB，0 = 不限）
+  cacheMaxBytes: parseInt(process.env.CACHE_MAX_MB || '2048', 10) * 1024 * 1024,
   thumbSize: parseInt(process.env.THUMB_SIZE || '320', 10),
   thumbQuality: parseInt(process.env.THUMB_QUALITY || '80', 10),
 };

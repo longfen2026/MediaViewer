@@ -123,6 +123,86 @@ async function runTests() {
         config.thumbDir = origThumbDir;
         fs.rmSync(thumbTmp, { recursive: true, force: true });
       }
+
+      // 解压视频缓存必须清理孤儿文件
+      console.log('✓ 测试10: 解压视频缓存孤儿清理');
+      const origVideoCacheDir = config.videoCacheDir;
+      const videoTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gal-video-test-'));
+      config.videoCacheDir = videoTmp;
+      try {
+        const orphan = path.join(videoTmp, 'orphan.mp4');
+        const keep = path.join(videoTmp, 'keep.mp4');
+        fs.writeFileSync(orphan, Buffer.alloc(1024));
+        fs.writeFileSync(keep, Buffer.alloc(1024));
+        const r = await thumbnail.cleanupVideoCache(new Set([keep]));
+        const ok = !fs.existsSync(orphan) && fs.existsSync(keep);
+        console.log('  孤儿视频删除:', ok ? '✓ 通过' : '✗ 失败', `(释放 ${r.freed} bytes)`, '\n');
+        if (!ok) throw new Error('cleanupVideoCache 孤儿清理行为错误');
+      } finally {
+        config.videoCacheDir = origVideoCacheDir;
+        fs.rmSync(videoTmp, { recursive: true, force: true });
+      }
+
+      // 总容量上限必须跨三个缓存目录按 atime 淘汰最久未访问的文件
+      console.log('✓ 测试11: 总缓存容量上限淘汰');
+      const budgetOrig = {
+        thumbDir: config.thumbDir,
+        videoThumbDir: config.videoThumbDir,
+        videoCacheDir: config.videoCacheDir,
+        max: config.cacheMaxBytes,
+      };
+      const budgetTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gal-budget-test-'));
+      config.thumbDir = path.join(budgetTmp, 'thumbs');
+      config.videoThumbDir = path.join(budgetTmp, 'videothumbs');
+      config.videoCacheDir = path.join(budgetTmp, 'videos');
+      try {
+        fs.mkdirSync(path.join(config.thumbDir, 'ab'), { recursive: true });
+        fs.mkdirSync(config.videoCacheDir, { recursive: true });
+        const oldThumb = path.join(config.thumbDir, 'ab', 'old.webp');
+        const newVideo = path.join(config.videoCacheDir, 'new.mp4');
+        fs.writeFileSync(oldThumb, Buffer.alloc(600));
+        fs.writeFileSync(newVideo, Buffer.alloc(600));
+        const past = new Date(Date.now() - 60 * 60 * 1000);
+        fs.utimesSync(oldThumb, past, past);
+
+        const usage = await thumbnail.cacheUsage();
+        if (usage !== 1200) throw new Error(`cacheUsage 统计错误: ${usage}`);
+
+        config.cacheMaxBytes = 1000;
+        const r = await thumbnail.enforceCacheBudget();
+        const evicted = !fs.existsSync(oldThumb) && fs.existsSync(newVideo);
+        console.log('  跨目录统计:', usage, 'bytes ✓');
+        console.log('  超限淘汰最久未访问:', evicted ? '✓ 通过' : '✗ 淘汰顺序错误', `(剩余 ${r.total} bytes)`);
+        if (!evicted) throw new Error('enforceCacheBudget 淘汰顺序错误');
+
+        config.cacheMaxBytes = 0;
+        const noop = await thumbnail.enforceCacheBudget();
+        if (noop.deleted !== 0) throw new Error('cacheMaxBytes=0 时不应淘汰');
+        console.log('  上限为 0 时不淘汰: ✓ 通过\n');
+      } finally {
+        Object.assign(config, {
+          thumbDir: budgetOrig.thumbDir,
+          videoThumbDir: budgetOrig.videoThumbDir,
+          videoCacheDir: budgetOrig.videoCacheDir,
+          cacheMaxBytes: budgetOrig.max,
+        });
+        fs.rmSync(budgetTmp, { recursive: true, force: true });
+      }
+
+      // TtlCache 必须在过期与超限时移除条目
+      console.log('✓ 测试12: TtlCache 过期与容量上限');
+      const { TtlCache } = require('./src/ttlCache');
+      const c = new TtlCache({ ttl: 20, max: 2 });
+      c.set('a', 1);
+      c.set('b', 2);
+      c.set('c', 3);
+      if (c.size !== 2) throw new Error(`TtlCache 未按上限淘汰, size=${c.size}`);
+      if (c.get('a') !== undefined) throw new Error('TtlCache 未淘汰最旧键');
+      await new Promise(r => setTimeout(r, 30));
+      if (c.get('c') !== undefined) throw new Error('TtlCache 未按 TTL 过期');
+      c.prune();
+      if (c.size !== 0) throw new Error(`TtlCache prune 未清空过期项, size=${c.size}`);
+      console.log('  容量淘汰 + TTL 过期: ✓ 通过\n');
     } finally {
       config.galleryRoot = origRoot;
       fs.rmSync(tmpDir, { recursive: true, force: true });

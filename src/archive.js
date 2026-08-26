@@ -1,26 +1,29 @@
 const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 const { normalizeArchiveEntry } = require('./utils');
+const { TtlCache } = require('./ttlCache');
 
-const entriesCache = new Map();
 const ENTRIES_CACHE_TTL = 30 * 1000;
+const ENTRIES_CACHE_MAX = 200;
+const entriesCache = new TtlCache({ ttl: ENTRIES_CACHE_TTL, max: ENTRIES_CACHE_MAX });
+
+function cacheKeyOf(filePath) {
+  try {
+    return filePath + '@' + fs.statSync(filePath).mtimeMs;
+  } catch {
+    return null;
+  }
+}
 
 function getCachedEntries(filePath) {
-  try {
-    const mtime = fs.statSync(filePath).mtimeMs;
-    const key = filePath + '@' + mtime;
-    const c = entriesCache.get(key);
-    if (c && Date.now() - c.ts < ENTRIES_CACHE_TTL) return c.data;
-  } catch { /* ignore */ }
-  return null;
+  const key = cacheKeyOf(filePath);
+  if (!key) return null;
+  return entriesCache.get(key) || null;
 }
 
 function setCachedEntries(filePath, data) {
-  try {
-    const mtime = fs.statSync(filePath).mtimeMs;
-    const key = filePath + '@' + mtime;
-    entriesCache.set(key, { data, ts: Date.now() });
-  } catch { /* ignore */ }
+  const key = cacheKeyOf(filePath);
+  if (key) entriesCache.set(key, data);
 }
 
 function execFileAsync(cmd, args, options = {}) {

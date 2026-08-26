@@ -7,7 +7,7 @@ const api = require('./routes/api');
 const logger = require('./logger');
 const { errorHandler, requestLogger, apiLimiter } = require('./middleware');
 const SqliteStore = require('./sessionStore');
-const { cleanupThumbCache } = require('./thumbnail');
+const cacheJanitor = require('./cacheJanitor');
 const { execSync } = require('child_process');
 
 function checkBinary(cmd) {
@@ -113,9 +113,7 @@ async function init() {
     if (!checkBinary('ffmpeg')) logger.warn('警告: 未找到ffmpeg - 视频缩略图生成可能失败');
     if (!checkBinary('ffprobe')) logger.warn('警告: 未找到ffprobe - 视频尺寸信息可能不可用');
     if (!checkBinary('bsdtar')) logger.warn('警告: 未找到bsdtar - RAR压缩包支持可能不可用');
-    cleanupThumbCache().catch((err) => {
-      logger.error('缩略图缓存清理失败', { error: err.message, stack: err.stack });
-    });
+    cacheJanitor.start();
   });
 }
 

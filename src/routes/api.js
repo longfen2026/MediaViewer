@@ -27,8 +27,10 @@ function requireAuth(req, res, next) {
   next();
 }
 
-function sendFile(res, filePath, fallbackMime) {
+// 缩略图按内容哈希寻址，内容不可变，可长期缓存
+function sendThumb(res, filePath, fallbackMime) {
   res.setHeader('Content-Type', fallbackMime || mimeType(filePath));
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.sendFile(path.resolve(filePath));
 }
 
@@ -165,7 +167,7 @@ router.get('/thumb', requireAuth, async (req, res, next) => {
     } else {
       return res.status(400).json({ error: '不支持的文件类型' });
     }
-    sendFile(res, result.path, result.mime);
+    sendThumb(res, result.path, result.mime);
   } catch (e) { next(e); }
 });
 

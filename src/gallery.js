@@ -5,20 +5,17 @@ const { config } = require('./config');
 const { isImageFile, isArchiveFile, isHiddenName, isVideoFile, normalizeArchiveEntry } = require('./utils');
 const { listEntries, readEntryBuffer } = require('./archive');
 const { probeVideoSize, extractVideoToCache } = require('./thumbnail');
+const { TtlCache } = require('./ttlCache');
 
 const TREE_CACHE_TTL = 30 * 1000;
 const COUNT_CACHE_TTL = 30 * 1000;
+const COUNT_CACHE_MAX = 2000;
 let treeCache = { data: null, ts: 0 };
 let pendingTree = null;
-const childCountCache = new Map();
+const childCountCache = new TtlCache({ ttl: COUNT_CACHE_TTL, max: COUNT_CACHE_MAX });
 
 function treeCacheIsFresh() {
   return treeCache.data && Date.now() - treeCache.ts < TREE_CACHE_TTL;
-}
-
-function countCacheIsFresh(key) {
-  const c = childCountCache.get(key);
-  return c && Date.now() - c.ts < COUNT_CACHE_TTL;
 }
 
 function toRel(p) {
@@ -181,7 +178,7 @@ async function listGalleryDir(userPath, pageNum = 1, pageSize = 50, sortBy = 'na
 
 async function countChildImages(dir) {
   const cached = childCountCache.get(dir);
-  if (cached && Date.now() - cached.ts < COUNT_CACHE_TTL) return cached.count;
+  if (cached !== undefined) return cached;
 
   let count = 0;
   try {
@@ -204,7 +201,7 @@ async function countChildImages(dir) {
     count += childCounts.reduce((a, b) => a + b, 0);
   } catch { /* ignore */ }
 
-  childCountCache.set(dir, { count, ts: Date.now() });
+  childCountCache.set(dir, count);
   return count;
 }
 
