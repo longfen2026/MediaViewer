@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const crypto = require('crypto');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -44,6 +45,12 @@ const config = {
   cacheMaxBytes: parseInt(process.env.CACHE_MAX_MB || '2048', 10) * 1024 * 1024,
   thumbSize: parseInt(process.env.THUMB_SIZE || '320', 10),
   thumbQuality: parseInt(process.env.THUMB_QUALITY || '80', 10),
+  // 缩略图生成并发度；availableParallelism 在容器内会遵循 cgroup CPU 限制
+  thumbConcurrency: (() => {
+    const n = parseInt(process.env.THUMB_CONCURRENCY || '', 10);
+    if (Number.isInteger(n) && n > 0) return n;
+    return Math.max(2, Math.min(8, os.availableParallelism()));
+  })(),
 };
 
 module.exports = { config, ROOT_DIR };

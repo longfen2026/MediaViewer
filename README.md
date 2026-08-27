@@ -47,6 +47,7 @@ ADMIN_USER=admin ADMIN_PASSWORD=your-strong-password GALLERY_DIR=/data/pictures 
 | `VIDEO_THUMB_DIR` | `/app/data/videothumbs` | 视频缩略图缓存目录 |
 | `VIDEO_CACHE_DIR` | `/app/data/videos` | 压缩包内视频解压缓存目录 |
 | `CACHE_MAX_MB` | `2048` | 缓存总容量上限（含缩略图与解压视频），超限时按最久未访问淘汰，`0` 为不限 |
+| `THUMB_CONCURRENCY` | CPU 核数（2–8） | 缩略图生成并发数，容器内会遵循 cgroup CPU 限制 |
 | `TRUST_PROXY` | `0` | 信任的反向代理层数，仅在代理后运行时设为 `1` |
 | `LOGIN_RATE_LIMIT_MAX` | `30` | 单 IP 15 分钟内登录尝试上限 |
 | `API_RATE_LIMIT_MAX` | `600` | 单用户每分钟 API 请求上限 |

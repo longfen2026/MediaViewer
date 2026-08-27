@@ -26,7 +26,7 @@ class Semaphore {
     else { this.active--; }
   }
 }
-const thumbSem = new Semaphore(2);
+const thumbSem = new Semaphore(config.thumbConcurrency);
 
 // 请求合并：同一缓存键正在生成时，后续请求等待同一 Promise
 const pendingThumbs = new Map();
@@ -86,8 +86,11 @@ async function generateThumbManaged(fn) {
 function execFileAsync(cmd, args, options = {}) {
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { maxBuffer: 64 * 1024 * 1024, ...options }, (err, stdout, stderr) => {
-      if (err) reject(new Error(`${cmd} failed: ${stderr || err.message}`));
-      else resolve({ stdout, stderr });
+      if (err) {
+        // stderr 在 encoding:'buffer' 下是 Buffer，空 Buffer 仍为真值，需按长度判断
+        const detail = stderr && stderr.length ? stderr.toString() : err.message;
+        reject(new Error(`${cmd} failed: ${detail}`));
+      } else resolve({ stdout, stderr });
     });
   });
 }
@@ -109,23 +112,18 @@ async function probeVideoSize(inputPath) {
 async function generateThumbFromVideo(inputPath, targetPath, { width } = {}) {
   await ensureDir(path.dirname(targetPath));
   const size = width || config.thumbSize;
-  const tmp = path.join(path.dirname(targetPath), path.basename(targetPath) + '.png');
-  try {
-    // 先用 ffmpeg 无损提取单帧高清 PNG，再由 sharp 高质量缩放编码 WebP
-    await execFileAsync('ffmpeg', [
-      '-hide_banner', '-loglevel', 'error',
-      '-y', '-ss', '1', '-i', inputPath,
-      '-vframes', '1',
-      '-qscale:v', '2',
-      tmp,
-    ]);
-    await sharp(tmp, { failOn: 'none' })
-      .resize(size, size, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: config.thumbQuality })
-      .toFile(targetPath);
-  } finally {
-    fs.promises.unlink(tmp).catch(() => {});
-  }
+  // ffmpeg 无损抽单帧后经 stdout 直接交给 sharp，省去临时 PNG 的落盘与回读
+  const { stdout } = await execFileAsync('ffmpeg', [
+    '-hide_banner', '-loglevel', 'error',
+    '-ss', '1', '-i', inputPath,
+    '-vframes', '1',
+    '-f', 'image2pipe', '-vcodec', 'png',
+    'pipe:1',
+  ], { encoding: 'buffer' });
+  await sharp(stdout, { failOn: 'none' })
+    .resize(size, size, { fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: config.thumbQuality })
+    .toFile(targetPath);
   return targetPath;
 }
 

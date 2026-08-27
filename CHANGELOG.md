@@ -2,6 +2,17 @@
 
 版本号以仓库根目录 `version` 文件为唯一来源，`package.json` 由 `npm run sync-version` 保持同步。
 
+## [1.2.7] - 2026-08-27
+
+### 改进
+- 缩略图生成并发度改为按可用 CPU 自适应（原硬编码 2），可用 `THUMB_CONCURRENCY` 覆盖
+- 视频抽帧改走 `image2pipe` 管道直喂 sharp，不再落地临时 PNG
+
+### 修复
+- `execFileAsync` 在 buffer 编码下把空 stderr 当作有效错误信息，导致 ffmpeg 失败时报错内容为空
+
+---
+
 ## [1.2.5] - 2026-08-26
 
 ### 修复
