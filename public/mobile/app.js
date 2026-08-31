@@ -511,10 +511,17 @@
   let viewerPinchStartScale = 1;
   let viewerBlobUrl = null;
   let viewerAnimating = false;
+  let viewerSwipeDx = 0;
+  let viewerIsSwiping = false;
+  let viewerLongPressTimer = null;
+
+  const SWIPE_TRIGGER_PX = 60;
+  const SWIPE_ANIM_MS = 220;
+  const LONG_PRESS_MS = 500;
 
   function applyViewerTransform() {
     const img = $('#m-viewer-img');
-    img.style.transform = `translate(calc(-50% + ${viewerTranslateX}px), calc(-50% + ${viewerTranslateY}px)) scale(${viewerScale})`;
+    img.style.transform = `translate(calc(-50% + ${viewerTranslateX + viewerSwipeDx}px), calc(-50% + ${viewerTranslateY}px)) scale(${viewerScale})`;
   }
 
   function fitScaleFor(nw, nh) {
@@ -541,6 +548,11 @@
     return fitScaleFor(img.naturalWidth, img.naturalHeight);
   }
 
+  function maxViewerPanX() {
+    const img = $('#m-viewer-img');
+    return Math.max(0, (img.naturalWidth * viewerScale - window.innerWidth) / 2);
+  }
+
   function initViewerImage() {
     const img = $('#m-viewer-img');
     img.style.width = img.naturalWidth + 'px';
@@ -556,10 +568,12 @@
     const items = state.cachedItems || [];
     viewerItems = items;
     viewerIndex = items.indexOf(item);
+    history.pushState({ viewer: true }, '');
     renderViewer(item);
   }
 
-  function renderViewer(item) {
+  /* slideFrom：新图入场方向，+1 从右侧滑入，-1 从左侧滑入 */
+  function renderViewer(item, slideFrom) {
     const img = $('#m-viewer-img');
     const video = $('#m-viewer-video');
     const spinner = $('#m-viewer-spinner');
@@ -569,13 +583,15 @@
     video.removeAttribute('src');
     video.removeAttribute('srcObject');
     delete video.dataset.fallback;
+    img.style.transition = '';
     img.style.transform = '';
     img.style.width = '';
     img.style.height = '';
+    viewerSwipeDx = 0;
+    viewerIsSwiping = false;
 
     $('#m-viewer').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
-    history.pushState({ viewer: true }, '');
 
     if (item.mime === 'video') {
       spinner.classList.add('hidden');
@@ -601,12 +617,12 @@
     } else {
       img.classList.remove('hidden');
       img.dataset.loaded = '0';
-      delete img.dataset.slideIn;
       img.onload = () => {
         if (img.dataset.loaded === '1') return;
         img.dataset.loaded = '1';
         $('#m-viewer-spinner').classList.add('hidden');
         initViewerImage();
+        if (slideFrom) slideViewerIn(slideFrom);
       };
       img.onerror = () => {
         if (img.dataset.loaded === '1') return;
@@ -631,8 +647,58 @@
     delete img.dataset.loaded;
     img.style.transition = '';
     viewerAnimating = false;
+    viewerSwipeDx = 0;
+    viewerIsSwiping = false;
+    cancelLongPress();
+    closeSheet();
     $('#m-viewer').classList.add('hidden');
     document.body.style.overflow = '';
+  }
+
+  /* ---------------- Viewer 滑动切图 ---------------- */
+  function animateSwipeTo(target, onDone) {
+    const img = $('#m-viewer-img');
+    viewerAnimating = true;
+    img.style.transition = `transform ${SWIPE_ANIM_MS}ms ease-out`;
+    viewerSwipeDx = target;
+    applyViewerTransform();
+    setTimeout(() => {
+      img.style.transition = '';
+      viewerAnimating = false;
+      if (onDone) onDone();
+    }, SWIPE_ANIM_MS);
+  }
+
+  function springBackSwipe() {
+    animateSwipeTo(0);
+  }
+
+  function switchViewerItem(dir) {
+    const target = viewerIndex + dir;
+    if (viewerIndex < 0 || target < 0 || target >= viewerItems.length) {
+      springBackSwipe();
+      return;
+    }
+    animateSwipeTo(-dir * window.innerWidth, () => {
+      viewerIndex = target;
+      renderViewer(viewerItems[target], dir);
+    });
+  }
+
+  function slideViewerIn(dir) {
+    const img = $('#m-viewer-img');
+    viewerSwipeDx = dir * window.innerWidth;
+    applyViewerTransform();
+    void img.offsetWidth; // 强制回流，否则起始位置与终点会被合并成同一帧
+    animateSwipeTo(0);
+  }
+
+  /* ---------------- Viewer 长按 ---------------- */
+  function cancelLongPress() {
+    if (viewerLongPressTimer) {
+      clearTimeout(viewerLongPressTimer);
+      viewerLongPressTimer = null;
+    }
   }
 
   function onViewerTouchStart(e) {
@@ -643,13 +709,25 @@
     if (t.length === 1) {
       viewerIsDragging = true;
       viewerIsPinching = false;
+      viewerIsSwiping = false;
       viewerTouchStartX = t[0].clientX;
       viewerTouchStartY = t[0].clientY;
       viewerLastTouchX = t[0].clientX;
       viewerLastTouchY = t[0].clientY;
+      const cur = viewerItems[viewerIndex];
+      if (cur && cur.mime !== 'video') {
+        cancelLongPress();
+        viewerLongPressTimer = setTimeout(() => {
+          viewerLongPressTimer = null;
+          viewerIsDragging = false;
+          openSheet(cur);
+        }, LONG_PRESS_MS);
+      }
     } else if (t.length === 2) {
+      cancelLongPress();
       viewerIsPinching = true;
       viewerIsDragging = false;
+      viewerIsSwiping = false;
       viewerPinchStartDist = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
       viewerPinchStartScale = viewerScale;
     }
@@ -665,9 +743,28 @@
       clampViewerPan();
       applyViewerTransform();
     } else if (viewerIsDragging && t.length === 1) {
-      viewerTranslateX += t[0].clientX - viewerLastTouchX;
-      viewerTranslateY += t[0].clientY - viewerLastTouchY;
-      clampViewerPan();
+      const dx = t[0].clientX - viewerLastTouchX;
+      const dy = t[0].clientY - viewerLastTouchY;
+      const totalDx = t[0].clientX - viewerTouchStartX;
+      const totalDy = t[0].clientY - viewerTouchStartY;
+      if (Math.abs(totalDx) > 10 || Math.abs(totalDy) > 10) cancelLongPress();
+
+      // 已平移到水平边缘（或未放大）且手势偏水平时，改为翻页
+      if (!viewerIsSwiping) {
+        const limit = maxViewerPanX();
+        const atEdge = dx > 0 ? viewerTranslateX >= limit - 0.5 : viewerTranslateX <= -limit + 0.5;
+        if (atEdge && Math.abs(totalDx) > Math.abs(totalDy) && Math.abs(totalDx) > 10) {
+          viewerIsSwiping = true;
+        }
+      }
+
+      if (viewerIsSwiping) {
+        viewerSwipeDx += dx;
+      } else {
+        viewerTranslateX += dx;
+        viewerTranslateY += dy;
+        clampViewerPan();
+      }
       applyViewerTransform();
       viewerLastTouchX = t[0].clientX;
       viewerLastTouchY = t[0].clientY;
@@ -677,6 +774,7 @@
   function onViewerTouchEnd(e) {
     if (e.target.tagName === 'VIDEO') return;
     e.preventDefault();
+    cancelLongPress();
 
     if (viewerIsPinching) {
       viewerIsPinching = false;
@@ -692,6 +790,13 @@
 
     if (viewerIsDragging) {
       viewerIsDragging = false;
+      if (viewerIsSwiping) {
+        viewerIsSwiping = false;
+        if (viewerSwipeDx <= -SWIPE_TRIGGER_PX) switchViewerItem(1);
+        else if (viewerSwipeDx >= SWIPE_TRIGGER_PX) switchViewerItem(-1);
+        else springBackSwipe();
+        return;
+      }
       const absDx = Math.abs(viewerLastTouchX - viewerTouchStartX);
       const absDy = Math.abs(viewerLastTouchY - viewerTouchStartY);
       if (absDx < 10 && absDy < 10) {
@@ -701,8 +806,13 @@
   }
 
   function onViewerTouchCancel(e) {
+    cancelLongPress();
     viewerIsDragging = false;
     viewerIsPinching = false;
+    if (viewerIsSwiping) {
+      viewerIsSwiping = false;
+      springBackSwipe();
+    }
   }
 
   const viewerEl = $('#m-viewer');
@@ -710,6 +820,78 @@
   viewerEl.addEventListener('touchmove', onViewerTouchMove, { passive: false });
   viewerEl.addEventListener('touchend', onViewerTouchEnd, { passive: false });
   viewerEl.addEventListener('touchcancel', onViewerTouchCancel, { passive: false });
+  viewerEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  /* ---------------- 原图保存 ---------------- */
+  let sheetItem = null;
+  let sheetBlobPromise = null;
+
+  function openSheet(item) {
+    sheetItem = item;
+    $('#m-sheet-title').textContent = item.name;
+    $('#m-sheet').classList.remove('hidden');
+    // 提前取图：保存时若还要等网络，iOS 会因失去用户手势而拒绝调起分享面板
+    sheetBlobPromise = fetchOriginal(item);
+    sheetBlobPromise.catch(() => {});
+  }
+
+  function closeSheet() {
+    $('#m-sheet').classList.add('hidden');
+    sheetItem = null;
+    sheetBlobPromise = null;
+  }
+
+  async function fetchOriginal(item) {
+    const res = await fetch(rawUrl(item), { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.blob();
+  }
+
+  function downloadName(item) {
+    const base = String(item.name || 'image').split('/').pop();
+    return base.replace(/[\\/:*?"<>|]/g, '_') || 'image';
+  }
+
+  async function saveOriginal() {
+    const item = sheetItem;
+    const pending = sheetBlobPromise;
+    if (!item) return;
+    closeSheet();
+
+    let blob;
+    try {
+      blob = await (pending || fetchOriginal(item));
+    } catch {
+      showToast('获取原图失败');
+      return;
+    }
+
+    const name = downloadName(item);
+    const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+    // iOS 只能经系统分享面板存入相册；其余平台退回普通下载
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] });
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showToast('已开始下载');
+  }
+
+  $('#m-sheet-save').addEventListener('click', saveOriginal);
+  $('#m-sheet-cancel').addEventListener('click', closeSheet);
+  $('#m-sheet-bg').addEventListener('click', closeSheet);
 
   /* ---------------- Sortbar ---------------- */
   function sortOrderArrow() {
@@ -802,7 +984,10 @@
 
   /* Android 返回键：关闭查看器或抽屉 */
   window.addEventListener('popstate', () => {
-    if (!$('#m-viewer').classList.contains('hidden')) {
+    if (!$('#m-sheet').classList.contains('hidden')) {
+      closeSheet();
+      history.pushState({ viewer: true }, '');
+    } else if (!$('#m-viewer').classList.contains('hidden')) {
       closeViewer();
     } else if ($('#m-drawer').classList.contains('open')) {
       closeDrawer();
