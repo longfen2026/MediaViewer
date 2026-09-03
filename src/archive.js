@@ -37,27 +37,34 @@ function execFileAsync(cmd, args, options = {}) {
 
 const MONTHS = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
 
-function parseBsdtarTime(fields) {
-  for (let i = 0; i < fields.length; i++) {
-    const m = MONTHS[fields[i]];
-    if (m === undefined) continue;
-    const day = parseInt(fields[i + 1], 10);
-    const tok = fields[i + 2];
-    if (isNaN(day) || !tok) return null;
-    const now = new Date();
-    let year = now.getFullYear();
-    let hour = 0;
-    let min = 0;
-    if (tok.includes(':')) {
-      const [hh, mm] = tok.split(':').map(Number);
-      hour = hh || 0;
-      min = mm || 0;
-    } else {
-      year = parseInt(tok, 10) || year;
-    }
-    return new Date(year, m, day, hour, min).getTime();
+// bsdtar 的日期列右对齐，单数日会出现 "Sep  3"，故整体按空白匹配而非按字段切分
+const LIST_DATE_RE = /\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{1,2}:\d{2}|\d{4})\s/;
+
+function parseBsdtarTime(month, day, tok) {
+  const m = MONTHS[month];
+  const d = parseInt(day, 10);
+  if (m === undefined || isNaN(d)) return null;
+  const now = new Date();
+  if (tok.includes(':')) {
+    const [hh, mm] = tok.split(':').map(Number);
+    return new Date(now.getFullYear(), m, d, hh || 0, mm || 0).getTime();
   }
-  return null;
+  return new Date(parseInt(tok, 10) || now.getFullYear(), m, d).getTime();
+}
+
+function parseListLine(line) {
+  const isDirectory = line.endsWith('/');
+  const m = LIST_DATE_RE.exec(line);
+  if (!m) return { name: normalizeArchiveEntry(line), isDirectory, size: null, mtime: null };
+
+  const sizeTok = line.slice(0, m.index).trim().split(/\s+/).pop();
+  const size = parseInt(sizeTok, 10);
+  return {
+    name: normalizeArchiveEntry(line.slice(m.index + m[0].length).trim()),
+    isDirectory,
+    size: isNaN(size) ? null : size,
+    mtime: parseBsdtarTime(m[1], m[2], m[3]),
+  };
 }
 
 // zip 与 rar 统一使用 bsdtar（libarchive）流式读取，避免整包读入内存
@@ -69,22 +76,7 @@ async function listEntries(filePath) {
   const result = stdout.split('\n')
     .map(l => l.trim())
     .filter(Boolean)
-    .map(l => {
-      const fields = l.split(' ');
-      let time = null;
-      let size = null;
-      let name = '';
-      for (let i = 0; i < fields.length; i++) {
-        if (MONTHS[fields[i]] !== undefined) {
-          time = parseBsdtarTime(fields);
-          size = parseInt(fields[i - 1], 10);
-          if (isNaN(size)) size = null;
-          name = fields.slice(i + 3).join(' ').trim();
-          break;
-        }
-      }
-      return { name: normalizeArchiveEntry(name), isDirectory: l.endsWith('/'), size, mtime: time };
-    });
+    .map(parseListLine);
 
   setCachedEntries(filePath, result);
   return result;
