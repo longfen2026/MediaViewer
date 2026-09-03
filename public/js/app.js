@@ -826,6 +826,13 @@ function applyThumbSize() {
     }
   }
 
+  function fmtTime(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  }
+
   function infoRow(label, value) {
     const row = document.createElement('div');
     row.className = 'info-row';

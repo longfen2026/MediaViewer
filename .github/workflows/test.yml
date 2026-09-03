@@ -33,3 +33,32 @@ jobs:
 
       - name: Build image
         run: docker build -t gallery-manager:test .
+
+      - name: Prepare gallery dir
+        run: mkdir -p gallery
+
+      - name: Run container
+        run: |
+          docker run -d --rm --name gallery-manager-test -p 8080:8080 \
+            -v "$GITHUB_WORKSPACE/gallery":/gallery \
+            -v gallery-data:/app/data \
+            gallery-manager:test
+
+      - name: Wait for server
+        run: |
+          for i in {1..30}; do
+            if curl -sS http://localhost:8080/api/ping >/dev/null 2>&1; then
+              echo "server ready"; break
+            fi
+            sleep 1
+          done
+
+      - name: Show container logs
+        run: docker logs --tail 200 gallery-manager-test || true
+
+      - name: Ping endpoint
+        run: curl -v http://localhost:8080/api/ping
+
+      - name: Stop container
+        if: always()
+        run: docker stop gallery-manager-test || true

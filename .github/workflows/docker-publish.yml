@@ -1,0 +1,66 @@
+name: Docker Publish
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set lowercase image name
+        run: |
+          echo "IMAGE_NAME_LOWER=${IMAGE_NAME,,}" >> $GITHUB_ENV
+          PKG=${IMAGE_NAME##*/}
+          echo "PACKAGE_NAME=${PKG,,}" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Read version from file
+        id: version
+        run: |
+          VERSION=$(cat version | tr -d '[:space:]')
+          echo "IMAGE_TAG=$VERSION" >> "$GITHUB_ENV"
+          echo "Image version: $VERSION"
+        shell: bash
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ env.IMAGE_TAG }}
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Prune old GHCR package versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/cleanup-ghcr.sh "$PACKAGE_NAME" 3
+        shell: bash

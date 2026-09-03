@@ -1,24 +1,66 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 PACKAGE="$1"
-VERSIONS_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/packages/container/${PACKAGE}/versions"
-AUTH="Authorization: Bearer $GH_TOKEN"
-while true; do
-  RESP=$(curl -s -H "$AUTH" -H "Accept: application/vnd.github.v3+json" "${VERSIONS_URL}?per_page=100")
-  COUNT=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)")
-  [ "$COUNT" = "0" ] && break
-  echo "Deleting $COUNT versions..."
-  echo "$RESP" | python3 -c "
-import sys,json,subprocess
-data=json.load(sys.stdin)
-if not isinstance(data,list): sys.exit(0)
-for v in data:
-  vid=v['id']
-  tags=v.get('metadata',{}).get('container',{}).get('tags',[]) or ['(untagged)']
-  print('  Deleting version',vid,':',tags)
-  r=subprocess.run(['curl','-s','-X','DELETE','-H','$AUTH','${VERSIONS_URL}/'+str(vid)],capture_output=True,text=True)
-  if r.returncode==0: print('    Deleted')
-  else: print('    Failed:',r.stdout[:200])
-"
-done
-echo "All versions deleted"
+KEEP="${2:-3}"
+
+PACKAGE="$PACKAGE" KEEP="$KEEP" python3 - <<'PY'
+import json, os, urllib.error, urllib.request
+
+repo = os.environ['GITHUB_REPOSITORY']
+package = os.environ['PACKAGE']
+keep = int(os.environ['KEEP'])
+base = f'https://api.github.com/repos/{repo}/packages/container/{package}/versions'
+headers = {
+    'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+    'Accept': 'application/vnd.github+json',
+}
+
+
+def call(url, method='GET'):
+    req = urllib.request.Request(url, method=method, headers=headers)
+    with urllib.request.urlopen(req) as resp:
+        body = resp.read()
+    return json.loads(body) if body else None
+
+
+def tags(version):
+    return version.get('metadata', {}).get('container', {}).get('tags') or []
+
+
+def label(version):
+    return f"{version['id']} [{','.join(tags(version)) or '(untagged)'}]"
+
+
+versions = []
+page = 1
+while True:
+    try:
+        batch = call(f'{base}?per_page=100&page={page}')
+    except urllib.error.HTTPError as err:
+        if err.code == 404 and page == 1:
+            print(f'Package {package} not found, nothing to clean up')
+            raise SystemExit(0)
+        raise
+    if not batch:
+        break
+    versions.extend(batch)
+    page += 1
+
+versions.sort(key=lambda v: v['created_at'], reverse=True)
+tagged = [v for v in versions if tags(v)]
+
+# 未打标签的版本可能是保留版本的 attestation/平台子清单，故以最旧保留版本的时间为界向前清理
+cutoff = tagged[keep - 1]['created_at'] if len(tagged) > keep else None
+stale = [v for v in versions if cutoff and v['created_at'] < cutoff]
+
+for v in tagged[:keep]:
+    print('Keeping', label(v))
+for v in stale:
+    print('Deleting', label(v))
+    try:
+        call(f"{base}/{v['id']}", method='DELETE')
+    except urllib.error.HTTPError as err:
+        print('  Failed:', err.code, err.read()[:200].decode('utf-8', 'replace'))
+
+print(f'Kept {min(len(tagged), keep)} tagged version(s), deleted {len(stale)}')
+PY
