@@ -130,8 +130,16 @@ async function listGalleryDir(userPath, pageNum = 1, pageSize = 50, sortBy = 'na
     if (!stat) continue;
     const full = path.join(dir, name);
     if (stat.isDirectory()) {
-      const childCount = await countChildImages(full);
-      folders.push({ name, rel: toRel(full), type: 'dir', count: childCount, mtime: stat.mtimeMs });
+      const counts = await countChildMedia(full);
+      folders.push({
+        name,
+        rel: toRel(full),
+        type: 'dir',
+        count: counts.images + counts.videos,
+        imageCount: counts.images,
+        videoCount: counts.videos,
+        mtime: stat.mtimeMs,
+      });
     } else if (isArchiveFile(name)) {
       archives.push({ name, rel: toRel(full), type: 'archive', mtime: stat.mtimeMs });
     } else if (isVideoFile(name)) {
@@ -176,11 +184,12 @@ async function listGalleryDir(userPath, pageNum = 1, pageSize = 50, sortBy = 'na
   };
 }
 
-async function countChildImages(dir) {
+async function countChildMedia(dir) {
   const cached = childCountCache.get(dir);
   if (cached !== undefined) return cached;
 
-  let count = 0;
+  let images = 0;
+  let videos = 0;
   try {
     const entries = await fs.promises.readdir(dir);
     const stats = await Promise.all(entries.map(n =>
@@ -193,16 +202,22 @@ async function countChildImages(dir) {
       if (!stat) continue;
       if (stat.isDirectory()) {
         dirs.push(path.join(dir, entries[i]));
+      } else if (isVideoFile(entries[i])) {
+        videos += 1;
       } else if (isImageFile(entries[i])) {
-        count += 1;
+        images += 1;
       }
     }
-    const childCounts = await Promise.all(dirs.map(d => countChildImages(d)));
-    count += childCounts.reduce((a, b) => a + b, 0);
+    const childCounts = await Promise.all(dirs.map(d => countChildMedia(d)));
+    for (const c of childCounts) {
+      images += c.images;
+      videos += c.videos;
+    }
   } catch { /* ignore */ }
 
-  childCountCache.set(dir, count);
-  return count;
+  const result = { images, videos };
+  childCountCache.set(dir, result);
+  return result;
 }
 
 function formatSize(bytes) {

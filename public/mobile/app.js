@@ -268,7 +268,7 @@
     const folderGrid = $('#m-folders');
     folderGrid.innerHTML = '';
     const dirCards = folders.map((f) => ({
-      name: f.name, rel: f.rel, count: f.count, type: 'dir',
+      name: f.name, rel: f.rel, count: f.count, imageCount: f.imageCount, videoCount: f.videoCount, type: 'dir',
     }));
     const archCards = archives.map((a) => ({
       name: a.name, rel: a.rel, count: null, type: 'archive',
@@ -340,13 +340,20 @@
     if (state.pageNum < state.totalPages) openDirectory(state.currentPath, state.pageNum + 1);
   });
 
+  function folderCountText(f) {
+    const parts = [];
+    if (f.imageCount) parts.push(f.imageCount + ' 图');
+    if (f.videoCount) parts.push(f.videoCount + ' 视频');
+    return parts.join(' · ');
+  }
+
   function makeFolderCard(f) {
     const card = document.createElement('div');
     card.className = 'm-folder-card';
     card.innerHTML = `
       <div class="m-folder-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
       <div class="m-folder-name"></div>
-      <div class="m-folder-count">${f.count !== undefined ? f.count : ''}</div>
+      <div class="m-folder-count">${folderCountText(f)}</div>
     `;
     card.querySelector('.m-folder-name').textContent = f.name;
     card.addEventListener('click', () => openDirectory(f.rel));

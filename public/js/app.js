@@ -514,6 +514,14 @@ function applyThumbSize() {
     renderPagination();
   }
 
+  function folderCountText(item) {
+    const parts = [];
+    if (item.imageCount) parts.push(item.imageCount + ' 张图片');
+    if (item.videoCount) parts.push(item.videoCount + ' 个视频');
+    if (parts.length) return parts.join(' · ');
+    return item.count !== undefined ? '空文件夹' : '';
+  }
+
   function renderFolderCards(items, container) {
     items.forEach((item) => {
       const card = document.createElement('div');
@@ -522,7 +530,7 @@ function applyThumbSize() {
       card.innerHTML = `
         <div class="icon">${isArchive ? icon('archive') : icon('folder')}</div>
         <div class="name"></div>
-        <div class="count">${isArchive ? '压缩包' : (item.count !== undefined ? item.count + ' 张图片' : '')}</div>
+        <div class="count">${isArchive ? '压缩包' : folderCountText(item)}</div>
       `;
       card.querySelector('.name').textContent = item.name;
       card.addEventListener('click', () => {
