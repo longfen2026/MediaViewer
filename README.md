@@ -7,7 +7,7 @@
 1. **Web 管理 + 登录认证**：管理员账号密码由环境变量 `ADMIN_USER` / `ADMIN_PASSWORD` 设置（默认 `admin` / `admin`）
 2. **映射目录管理**：通过环境变量指定根目录，每个子目录即一个套图集合，可包含多个子文件夹与压缩包
 3. **左侧目录树 + 右侧浏览区**：点击左侧目录，右侧展示其中套图与图片
-4. **压缩包浏览**：支持 `.zip`（adm-zip 纯 JS）与 `.rar`（libarchive `bsdtar`）
+4. **压缩包浏览**：支持 `.zip` 与 `.rar`，统一通过 libarchive `bsdtar` 流式读取
 5. **主流图片格式**：JPG/PNG/GIF/WebP/BMP/TIFF/AVIF/SVG/ICO/HEIC 等
 6. **宫格缩略图**：进入目录时刷新缩略图（sharp 生成 WebP 缓存），点击图片全屏查看原图，支持左右键切换
 7. **性能优化**：

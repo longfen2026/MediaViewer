@@ -105,4 +105,20 @@ function extractEntryToFile(filePath, entryName, targetPath) {
   });
 }
 
-module.exports = { listEntries, readEntryBuffer, extractEntryToFile };
+// 流式解压单个条目到可写流（如 HTTP 响应），避免大文件整条读入内存
+function streamEntry(filePath, entryName, dest) {
+  const entry = normalizeArchiveEntry(entryName);
+  return new Promise((resolve, reject) => {
+    const child = spawn('bsdtar', ['-xOf', filePath, entry], { stdio: ['ignore', 'pipe', 'inherit'] });
+    child.on('error', (err) => { child.kill(); reject(err); });
+    dest.on('close', () => child.kill());
+    child.stdout.on('error', reject);
+    child.stdout.pipe(dest);
+    child.on('close', (code) => {
+      if (code !== 0) reject(new Error(`bsdtar extract failed with code ${code}`));
+      else resolve();
+    });
+  });
+}
+
+module.exports = { listEntries, readEntryBuffer, extractEntryToFile, streamEntry };

@@ -182,11 +182,10 @@ router.get('/image', requireAuth, async (req, res, next) => {
 
     if (isArchiveFile(filePath)) {
       if (!entry) return res.status(400).json({ error: '缺少 entry 参数' });
-      const { readEntryBuffer } = require('../archive');
-      const buf = await readEntryBuffer(filePath, entry);
+      const { streamEntry } = require('../archive');
       res.setHeader('Content-Type', mimeType(entry));
       res.setHeader('Cache-Control', 'private, max-age=86400');
-      return res.send(buf);
+      return streamEntry(filePath, entry, res).catch(next);
     }
 
     if (!isImageFile(filePath)) return res.status(400).json({ error: '不支持的文件类型' });
